@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>RegenMap — EV Range & Regen Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --bg:#0a0f0e;--surface:#111816;--surface2:#182220;
+  --border:rgba(0,255,160,.12);--border2:rgba(0,255,160,.22);
+  --accent:#00ffa0;--text:#e8f5f0;--muted:#7da898;--faint:#3d6058;
+  --danger:#ff6b6b;--warn:#ffb347;--info:#60b4ff;--purple:#c084fc;--charge:#ffd700;
+  /* route palette */
+  --fast:#60b4ff;--fast-dim:rgba(96,180,255,.15);--fast-border:rgba(96,180,255,.35);
+  --eco:#00ffa0; --eco-dim:rgba(0,255,160,.12); --eco-border:rgba(0,255,160,.35);
+  --font-mono:'Space Mono',monospace;--font-body:'DM Sans',sans-serif;
+  --r:10px;--rl:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+/* HEADER */
+header{display:flex;align-items:center;gap:14px;padding:9px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;}
+.logo{font-family:var(--font-mono);font-size:13px;color:var(--accent);letter-spacing:.08em;white-space:nowrap;}
+.logo span{color:var(--muted);}
+.hrow{display:flex;gap:9px;flex:1;align-items:center;flex-wrap:wrap;}
+.iw{position:relative;flex:1;min-width:120px;}
+.iw label{position:absolute;top:-8px;left:9px;font-size:9px;font-family:var(--font-mono);color:var(--accent);background:var(--surface);padding:0 3px;letter-spacing:.1em;text-transform:uppercase;}
+.iw input{width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--font-body);font-size:13px;padding:7px 11px;border-radius:var(--r);outline:none;transition:border .2s;}
+.iw input:focus{border-color:var(--accent);}
+.iw input::placeholder{color:var(--faint);}
+.iw.sm{flex:0 0 82px;}
+.btn{background:var(--accent);color:#0a1a14;border:none;font-family:var(--font-mono);font-size:12px;font-weight:700;padding:8px 16px;border-radius:var(--r);cursor:pointer;letter-spacing:.05em;transition:background .15s,transform .1s;white-space:nowrap;}
+.btn:hover{background:#00d47e;} .btn:active{transform:scale(.97);}
+.btn:disabled{background:var(--faint);color:var(--bg);cursor:not-allowed;}
+
+/* ROUTE TOGGLE */
+.route-toggle{display:flex;gap:6px;align-items:center;flex-shrink:0;}
+.rtbtn{font-family:var(--font-mono);font-size:11px;font-weight:700;padding:7px 14px;border-radius:var(--r);cursor:pointer;transition:all .15s;border:1.5px solid;letter-spacing:.05em;}
+.rtbtn.fast{color:var(--fast);border-color:rgba(96,180,255,.4);background:var(--fast-dim);}
+.rtbtn.fast.active{background:var(--fast);color:#0a1a14;border-color:var(--fast);}
+.rtbtn.eco{color:var(--eco);border-color:rgba(0,255,160,.4);background:var(--eco-dim);}
+.rtbtn.eco.active{background:var(--eco);color:#0a1a14;border-color:var(--eco);}
+.rtbtn:disabled{opacity:.3;cursor:not-allowed;}
+.same-badge{font-size:9px;font-family:var(--font-mono);color:var(--muted);padding:3px 7px;border:1px solid var(--border);border-radius:4px;white-space:nowrap;}
+
+/* COMPARISON BAR */
+.cmp-bar{display:none;background:var(--surface2);border-bottom:1px solid var(--border);padding:7px 16px;flex-shrink:0;}
+.cmp-bar.visible{display:flex;gap:24px;align-items:center;flex-wrap:wrap;}
+.cmp-item{display:flex;align-items:center;gap:7px;font-size:11px;}
+.cmp-label{color:var(--muted);font-family:var(--font-mono);font-size:9px;letter-spacing:.08em;}
+.cmp-val{font-family:var(--font-mono);font-weight:700;}
+.cmp-save{color:var(--eco);}  .cmp-cost{color:var(--warn);}
+
+/* LAYOUT */
+.main{display:flex;flex:1;overflow:hidden;}
+.sidebar{width:320px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.sb{flex:1;overflow-y:auto;padding:13px;scrollbar-width:thin;scrollbar-color:var(--border2) transparent;}
+
+/* STATS */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px;}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px;}
+.sc{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:10px 11px;}
+.sc.hi{border-color:rgba(0,255,160,.35);} .sc.danger{border-color:rgba(255,107,107,.35);}
+.sc.info{border-color:rgba(96,180,255,.3);} .sc.fast-c{border-color:rgba(96,180,255,.3);}
+.sc.eco-c{border-color:rgba(0,255,160,.3);}
+.sl{font-size:9px;font-family:var(--font-mono);color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px;}
+.sv{font-size:19px;font-family:var(--font-mono);font-weight:700;line-height:1;}
+.sv.g{color:var(--eco);} .sv.r{color:var(--danger);} .sv.w{color:var(--warn);}
+.sv.b{color:var(--fast);} .sv.y{color:var(--charge);}
+.su{font-size:9px;color:var(--muted);font-family:var(--font-mono);margin-top:2px;}
+
+/* SOC BAR */
+.socbar{margin-bottom:12px;}
+.socbar-label{display:flex;justify-content:space-between;font-size:10px;font-family:var(--font-mono);color:var(--muted);margin-bottom:5px;}
+.socbar-track{background:var(--bg);border-radius:4px;height:10px;overflow:hidden;border:1px solid var(--border);}
+.socbar-fill{height:100%;border-radius:4px;transition:width .6s ease;}
+
+.stitle{font-size:9px;font-family:var(--font-mono);color:var(--muted);letter-spacing:.12em;text-transform:uppercase;margin:0 0 6px;padding-bottom:5px;border-bottom:1px solid var(--border);}
+
+/* WINDOW LIST */
+.wlist{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+.wi{display:flex;align-items:center;gap:7px;padding:6px 9px;background:var(--bg);border:1px solid var(--border);border-radius:7px;cursor:pointer;transition:border-color .15s,background .15s;}
+.wi:hover,.wi.active{border-color:var(--border2);background:var(--surface2);}
+.wi.active{border-color:var(--accent);} .wi.unreachable{opacity:.35;}
+.wid{font-family:var(--font-mono);font-size:9px;color:var(--faint);width:20px;flex-shrink:0;}
+.wbw{flex:1;height:5px;background:var(--surface2);border-radius:3px;overflow:hidden;}
+.wb{height:100%;border-radius:3px;}
+.wen{font-family:var(--font-mono);font-size:10px;font-weight:700;width:50px;text-align:right;flex-shrink:0;}
+.wtag{font-size:8px;font-family:var(--font-mono);padding:2px 4px;border-radius:3px;width:48px;text-align:center;flex-shrink:0;}
+.t-regen{background:rgba(0,255,160,.15);color:var(--eco);}
+.t-low{background:rgba(255,179,71,.15);color:var(--warn);}
+.t-consuming{background:rgba(255,107,107,.15);color:var(--danger);}
+
+/* CHARGING PANEL */
+.charge-panel{background:rgba(255,215,0,.06);border:1px solid rgba(255,215,0,.22);border-radius:var(--r);padding:11px;margin-bottom:12px;display:none;}
+.charge-header{display:flex;align-items:center;gap:7px;margin-bottom:9px;}
+.charge-title{font-family:var(--font-mono);font-size:10px;color:var(--charge);letter-spacing:.08em;}
+.charge-sub{font-size:10px;color:var(--faint);margin-top:1px;}
+.station-list{display:flex;flex-direction:column;gap:5px;}
+.station-item{background:var(--bg);border:1px solid rgba(255,215,0,.15);border-radius:7px;padding:7px 9px;cursor:pointer;transition:border-color .15s;}
+.station-item:hover{border-color:rgba(255,215,0,.4);} .station-item.highlighted{border-color:var(--charge);}
+.st-r1{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}
+.st-name{font-size:11px;font-weight:500;flex:1;margin-right:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+.st-dist{font-family:var(--font-mono);font-size:10px;color:var(--charge);flex-shrink:0;}
+.st-r2{display:flex;gap:7px;}
+.st-meta{font-size:9px;color:var(--faint);}
+.st-badge{font-size:8px;font-family:var(--font-mono);padding:1px 4px;border-radius:3px;background:rgba(255,215,0,.1);color:var(--charge);}
+
+/* CHARTS */
+.csect{margin-bottom:12px;}
+.cwrap{height:68px;margin-top:5px;} canvas{display:block;width:100%!important;height:100%!important;}
+
+/* MAP */
+#map{flex:1;}
+.map-container{position:relative;flex:1;display:flex;flex-direction:column;}
+.leaflet-tile-pane{filter:brightness(.82) saturate(.6);}
+
+/* LEGEND */
+.legend{position:absolute;top:12px;right:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;z-index:500;font-family:var(--font-mono);font-size:10px;display:none;}
+.legend-title{color:var(--muted);margin-bottom:7px;letter-spacing:.08em;}
+.li{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.ls{width:18px;height:4px;border-radius:2px;}
+
+/* DETAIL PANEL */
+.dp{position:absolute;bottom:16px;right:16px;width:260px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--rl);padding:12px 14px;z-index:500;display:none;}
+.dp.visible{display:block;}
+.dp-title{font-family:var(--font-mono);font-size:10px;color:var(--accent);letter-spacing:.08em;margin-bottom:8px;}
+.dp-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border);}
+.dp-row:last-child{border:none;}
+.dp-k{color:var(--muted);font-size:10px;} .dp-v{font-family:var(--font-mono);font-size:11px;font-weight:700;}
+.dp-src{font-size:8px;color:var(--faint);font-family:var(--font-mono);}
+
+/* EXHAUSTION BANNER */
+.exbanner{background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.35);border-radius:var(--r);padding:9px 11px;margin-bottom:12px;display:none;}
+.exbanner.visible{display:block;}
+.ex-title{font-family:var(--font-mono);font-size:10px;color:var(--danger);letter-spacing:.08em;margin-bottom:3px;}
+.ex-body{font-size:11px;color:var(--muted);line-height:1.5;}
+
+/* LOADING */
+.lov{position:absolute;inset:0;background:rgba(10,15,14,.9);display:none;align-items:center;justify-content:center;flex-direction:column;gap:11px;z-index:1000;font-family:var(--font-mono);}
+.lov.visible{display:flex;}
+.spin{width:32px;height:32px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.lt{color:var(--accent);font-size:12px;letter-spacing:.1em;}
+.lsteps{display:flex;flex-direction:column;gap:4px;margin-top:2px;}
+.lstep{font-size:10px;color:var(--faint);display:flex;align-items:center;gap:6px;}
+.lstep.done{color:var(--accent);} .lstep.act{color:var(--text);}
+.ldot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}
+
+/* EMPTY */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;padding:16px;text-align:center;}
+.empty-icon{font-size:28px;opacity:.25;}
+.empty-t{font-family:var(--font-mono);font-size:11px;color:var(--faint);letter-spacing:.1em;}
+.empty-s{font-size:11px;color:var(--faint);line-height:1.6;}
+.ef{font-size:10px;font-family:var(--font-mono);color:var(--faint);display:flex;align-items:center;gap:5px;}
+.efd{width:5px;height:5px;border-radius:50%;}
+
+.ex-icon{background:none;border:none;}
+.ch-icon{background:none;border:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">REGEN<span>MAP</span></div>
+  <div class="hrow">
+    <div class="iw"><label>ORIGIN</label>
+      <input id="ori" type="text" placeholder="Origin" value="Ann Arbor, Michigan"/></div>
+    <div class="iw"><label>DESTINATION</label>
+      <input id="dst" type="text" placeholder="Destination" value="Detroit, Michigan"/></div>
+    <div class="iw sm"><label>SOC %</label>
+      <input id="soc" type="number" min="1" max="100" value="80"/></div>
+    <div class="iw sm"><label>BAT kWh</label>
+      <input id="bat" type="number" min="1" max="200" value="60"/></div>
+    <button class="btn" id="abtn" onclick="analyze()">ANALYZE →</button>
+  </div>
+  <!-- Route toggle (hidden until results load) -->
+  <div class="route-toggle" id="rtog" style="display:none">
+    <button class="rtbtn fast active" id="rbfast" onclick="switchRoute('fast')">⚡ FAST</button>
+    <button class="rtbtn eco"         id="rbeco"  onclick="switchRoute('eco')">🍃 ECO</button>
+    <span class="same-badge" id="sameBadge" style="display:none">SAME ROUTE</span>
+  </div>
+</header>
+
+<!-- Comparison bar -->
+<div class="cmp-bar" id="cmpbar">
+  <div class="cmp-item">
+    <span class="cmp-label">ECO SAVES</span>
+    <span class="cmp-val cmp-save" id="cmp-save">—</span>
+  </div>
+  <div class="cmp-item">
+    <span class="cmp-label">EXTRA TIME</span>
+    <span class="cmp-val cmp-cost" id="cmp-cost">—</span>
+  </div>
+  <div class="cmp-item">
+    <span class="cmp-label">FAST DIST</span>
+    <span class="cmp-val" style="color:var(--fast)" id="cmp-fdist">—</span>
+  </div>
+  <div class="cmp-item">
+    <span class="cmp-label">ECO DIST</span>
+    <span class="cmp-val" style="color:var(--eco)" id="cmp-edist">—</span>
+  </div>
+</div>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="sb" id="sb">
+      <div class="empty" id="emp">
+        <div class="empty-icon">⚡</div>
+        <div class="empty-t">NO ROUTE LOADED</div>
+        <div class="empty-s">Enter origin, destination, SOC and battery capacity</div>
+        <div style="margin-top:11px;display:flex;flex-direction:column;gap:5px;width:100%">
+          <div class="ef"><span class="efd" style="background:var(--fast)"></span>FAST — shortest travel time</div>
+          <div class="ef"><span class="efd" style="background:var(--eco)"></span>ECO — least energy used</div>
+          <div class="ef"><span class="efd" style="background:var(--info)"></span>speed_mps via OSRM</div>
+          <div class="ef"><span class="efd" style="background:var(--accent)"></span>Gradient via Open-Elevation</div>
+          <div class="ef"><span class="efd" style="background:var(--warn)"></span>Speed Limit via Overpass</div>
+          <div class="ef"><span class="efd" style="background:var(--charge)"></span>Charging stations via Overpass</div>
+        </div>
+      </div>
+
+      <div id="rp" style="display:none">
+        <!-- Route label -->
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px;">
+          <div id="route-label-badge" style="font-family:var(--font-mono);font-size:11px;font-weight:700;padding:4px 10px;border-radius:6px;">FAST</div>
+          <div style="font-size:11px;color:var(--muted)" id="route-label-sub"></div>
+        </div>
+
+        <div class="exbanner" id="exbanner">
+          <div class="ex-title">⚠ RANGE EXHAUSTED</div>
+          <div class="ex-body" id="exbody"></div>
+        </div>
+
+        <div class="grid2" id="sg"></div>
+        <div class="grid3" id="sg2"></div>
+        <div class="socbar" id="socbar"></div>
+
+        <div class="charge-panel" id="chpanel">
+          <div class="charge-header">
+            <span style="font-size:13px">⚡</span>
+            <div>
+              <div class="charge-title" id="ch-title">NEAREST CHARGING STATIONS</div>
+              <div class="charge-sub" id="ch-sub"></div>
+            </div>
+          </div>
+          <div class="station-list" id="stList"></div>
+        </div>
+
+        <div class="stitle">WINDOWS — ENERGY / REGEN</div>
+        <div class="wlist" id="wl"></div>
+
+        <div class="csect">
+          <div class="stitle">ELEVATION SMOOTHED [m]</div>
+          <div class="cwrap"><canvas id="ec"></canvas></div>
+        </div>
+        <div class="csect">
+          <div class="stitle">SPEED LIMIT [km/h]</div>
+          <div class="cwrap"><canvas id="sc2"></canvas></div>
+        </div>
+        <div class="csect">
+          <div class="stitle">ENERGY PER WINDOW [kWh]</div>
+          <div class="cwrap"><canvas id="enc"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="map-container">
+    <div id="map"></div>
+    <div class="legend" id="leg">
+      <div class="legend-title">MAP LEGEND</div>
+      <div class="li"><div class="ls" style="background:var(--fast)"></div><span style="color:var(--text)">FAST route</span></div>
+      <div class="li"><div class="ls" style="background:var(--eco)"></div><span style="color:var(--text)">ECO route</span></div>
+      <div class="li" style="margin-top:4px"><div class="ls" style="background:#00ffa0"></div><span style="color:var(--text)">Regenerating</span></div>
+      <div class="li"><div class="ls" style="background:#ffb347"></div><span style="color:var(--text)">Low consumption</span></div>
+      <div class="li"><div class="ls" style="background:#ff6b6b"></div><span style="color:var(--text)">Consuming</span></div>
+      <div class="li"><div class="ls" style="background:#555;border:1px dashed #666"></div><span style="color:var(--muted)">Unreachable</span></div>
+      <div class="li" style="margin-top:4px"><div style="width:12px;height:12px;border-radius:50%;background:var(--charge);flex-shrink:0"></div><span style="color:var(--text)">Charging station</span></div>
+    </div>
+    <div class="dp" id="dpanel">
+      <div class="dp-title" id="dpt">WINDOW #0</div>
+      <div id="dpr"></div>
+    </div>
+    <div class="lov" id="lov">
+      <div class="spin"></div>
+      <div class="lt">ANALYZING ROUTES</div>
+      <div class="lsteps" id="lsteps"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const map = L.map('map',{center:[42.3,-83.4],zoom:9});
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+
+// State
+let data=null, activeRoute='fast', activeW=-1;
+let layers={fast:[],eco:[]};
+let markers={mA:null,mB:null,exFast:null,exEco:null,chFast:[],chEco:[]};
+
+const LCOLOR={high_regen:'#00ffa0',low:'#ffb347',consuming:'#ff6b6b'};
+const TCLS  ={high_regen:'t-regen',low:'t-low',consuming:'t-consuming'};
+const TTXT  ={high_regen:'REGEN',  low:'LOW',  consuming:'USE'};
+const ROUTE_COLOR={fast:'#60b4ff', eco:'#00ffa0'};
+
+// ── LOADING ──────────────────────────────────────────────
+const STEPS=['Geocoding (Nominatim)','Route alternatives (OSRM)',
+             'Elevation & speed limits','Model inference (LSTM)',
+             'Charging stations (Overpass)'];
+let cStep=0;
+function showLoad(){
+  cStep=0;
+  document.getElementById('lsteps').innerHTML=
+    STEPS.map((s,i)=>`<div class="lstep" id="ls${i}"><span class="ldot"></span>${s}</div>`).join('');
+  document.getElementById('lov').classList.add('visible'); setStep(0);
+}
+function setStep(i){
+  STEPS.forEach((_,j)=>{
+    const el=document.getElementById(`ls${j}`);
+    if(el) el.className='lstep'+(j<i?' done':j===i?' act':'');
+  }); cStep=i;
+}
+function hideLoad(){document.getElementById('lov').classList.remove('visible');}
+
+// ── ANALYZE ──────────────────────────────────────────────
+async function analyze(){
+  const ori=document.getElementById('ori').value.trim();
+  const dst=document.getElementById('dst').value.trim();
+  const soc=parseFloat(document.getElementById('soc').value)||80;
+  const bat=parseFloat(document.getElementById('bat').value)||60;
+  if(!ori||!dst){alert('Enter origin and destination.');return;}
+  const btn=document.getElementById('abtn');
+  btn.disabled=true; clearAll(); showLoad();
+  const timer=setInterval(()=>{if(cStep<STEPS.length-2)setStep(cStep+1);},1800);
+  try{
+    const r=await fetch('/api/route',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({origin:ori,destination:dst,
+                           soc_percent:soc,battery_capacity_kwh:bat})
+    });
+    clearInterval(timer); setStep(STEPS.length-1);
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||'API error');}
+    data=await r.json();
+    await delay(300);
+    renderAll(data);
+  }catch(e){clearInterval(timer);alert('Error: '+e.message);}
+  finally{btn.disabled=false; hideLoad();}
+}
+
+// ── RENDER ALL ────────────────────────────────────────────
+function renderAll(d){
+  // Origin/destination markers
+  markers.mA=L.circleMarker([d.origin.lat,d.origin.lon],
+    {radius:9,fillColor:'#fff',color:'#0a0f0e',weight:2,fillOpacity:1})
+    .addTo(map).bindPopup(`<b>ORIGIN</b><br>${d.origin.display_name}`);
+  markers.mB=L.circleMarker([d.destination.lat,d.destination.lon],
+    {radius:9,fillColor:'#fff',color:'#0a0f0e',weight:2,fillOpacity:1})
+    .addTo(map).bindPopup(`<b>DESTINATION</b><br>${d.destination.display_name}`);
+
+  // Draw both routes on map (inactive route shown as thin faint line)
+  drawRoutePolylines('fast', d.fast);
+  drawRoutePolylines('eco',  d.eco);
+
+  // Exhaustion markers for both
+  if(d.fast.exhaustion) markers.exFast = makeExhaustionMarker(d.fast.exhaustion,'FAST').addTo(map);
+  if(d.eco.exhaustion)  markers.exEco  = makeExhaustionMarker(d.eco.exhaustion,'ECO').addTo(map);
+
+  // Charging markers for both
+  drawChargeMarkers('fast', d.fast.charging_stations?.stations||[]);
+  drawChargeMarkers('eco',  d.eco.charging_stations?.stations||[]);
+
+  map.fitBounds(L.latLngBounds(d.fast.route.full_coords),{padding:[40,40]});
+
+  // Show toggle + comparison bar
+  document.getElementById('rtog').style.display='flex';
+  const same=d.same_route;
+  document.getElementById('sameBadge').style.display=same?'block':'none';
+
+  if(!same){
+    const cmp=d.comparison;
+    document.getElementById('cmpbar').classList.add('visible');
+    document.getElementById('cmp-save').textContent=
+      cmp.energy_saving_kwh>0?`-${cmp.energy_saving_kwh} kWh`:'0 kWh';
+    document.getElementById('cmp-cost').textContent=
+      cmp.time_cost_min>0?`+${cmp.time_cost_min} min`:'0 min';
+    document.getElementById('cmp-fdist').textContent=d.fast.route.distance_km+' km';
+    document.getElementById('cmp-edist').textContent=d.eco.route.distance_km+' km';
+  }
+
+  document.getElementById('emp').style.display='none';
+  document.getElementById('rp').style.display='block';
+  document.getElementById('leg').style.display='block';
+
+  switchRoute('fast');   // default to FAST
+}
+
+function drawRoutePolylines(key, routeData){
+  routeData.windows.forEach((w,i)=>{
+    if(!w.coords||w.coords.length<2)return;
+    const col=w.reachable?LCOLOR[w.regen_label]:'#444';
+    const poly=L.polyline(w.coords,{
+      color:col, weight:4, opacity:0.35,
+      dashArray:w.reachable?null:'6,4'
+    }).addTo(map);
+    poly.on('click',()=>{if(activeRoute===key)highlightWin(i);});
+    poly.on('mouseover',()=>{if(activeRoute!==key)return;poly.setStyle({weight:8,opacity:1});});
+    poly.on('mouseout', ()=>{if(activeRoute===key&&activeW!==i)applyActiveStyle(key);});
+    layers[key].push(poly);
+  });
+}
+
+function applyActiveStyle(key){
+  const other=key==='fast'?'eco':'fast';
+  // Active route: bright colored segments
+  layers[key].forEach((l,i)=>{
+    const w=data[key].windows[i]; if(!w)return;
+    const col=w.reachable?LCOLOR[w.regen_label]:'#444';
+    l.setStyle({color:col, weight:i===activeW?9:5,
+                opacity:i===activeW?1:(w.reachable?.88:.3),
+                dashArray:w.reachable?null:'6,4'});
+    l.bringToFront();
+  });
+  // Inactive route: dim single color
+  layers[other].forEach((l,i)=>{
+    l.setStyle({color:ROUTE_COLOR[other], weight:3, opacity:0.2, dashArray:null});
+  });
+  // Show/hide exhaustion markers
+  if(markers.exFast) key==='fast'?markers.exFast.addTo(map):map.removeLayer(markers.exFast);
+  if(markers.exEco)  key==='eco' ?markers.exEco.addTo(map) :map.removeLayer(markers.exEco);
+  // Show/hide charge markers
+  markers.chFast.forEach(m=>key==='fast'?m.addTo(map):map.removeLayer(m));
+  markers.chEco.forEach( m=>key==='eco' ?m.addTo(map):map.removeLayer(m));
+}
+
+function makeExhaustionMarker(ex, label){
+  return L.marker(ex.coord,{icon:L.divIcon({
+    className:'ex-icon',
+    html:`<div style="background:#ff6b6b;color:#0a0f0e;font-family:'Space Mono',monospace;
+      font-size:9px;font-weight:700;padding:4px 8px;border-radius:7px;
+      border:2px solid #ff4444;white-space:nowrap;box-shadow:0 0 10px rgba(255,107,107,.5)">
+      ⚡ ${label} END<br><span style="font-size:8px">${ex.range_km} km</span></div>`,
+    iconAnchor:[38,12]
+  })}).bindPopup(`<b>${label} range exhausted</b><br>${ex.range_km} km from origin`);
+}
+
+function drawChargeMarkers(key, stations){
+  stations.forEach((st,i)=>{
+    const m=L.marker(st.coord,{icon:L.divIcon({
+      className:'ch-icon',
+      html:`<div style="width:26px;height:26px;border-radius:50%;
+        background:#ffd700;border:2px solid #0a0f0e;
+        display:flex;align-items:center;justify-content:center;
+        font-size:12px;box-shadow:0 0 7px rgba(255,215,0,.5);cursor:pointer;">⚡</div>`,
+      iconSize:[26,26],iconAnchor:[13,13]
+    })});
+    m.bindPopup(`<b>${st.name}</b>${st.network?'<br>'+st.network:''}<br><b>${st.dist_km} km</b>`);
+    m.on('click',()=>highlightStation(i));
+    markers[`ch${key.charAt(0).toUpperCase()+key.slice(1)}`].push(m);
+  });
+}
+
+// ── SWITCH ROUTE ──────────────────────────────────────────
+function switchRoute(key){
+  activeRoute=key; activeW=-1;
+  document.getElementById('rbfast').classList.toggle('active',key==='fast');
+  document.getElementById('rbeco').classList.toggle('active',key==='eco');
+  applyActiveStyle(key);
+
+  // Update sidebar with selected route data
+  const rd=data[key];
+  renderStats(rd, key);
+  renderChargingPanel(rd.charging_stations, rd.exhaustion, key);
+  renderWindowList(rd.windows);
+
+  // Charts
+  renderLineChart('ec', rd.elevation_profile,'dist_km','elevation',
+                  'rgba(192,132,252,.18)','#c084fc','m');
+  renderLineChart('sc2',rd.speed_profile,'dist_km','speed_limit_kmh',
+                  'rgba(255,179,71,.18)','#ffb347','km/h');
+  renderEnergyChart(rd.windows);
+
+  // Route label badge
+  const badge=document.getElementById('route-label-badge');
+  const col=key==='fast'?'var(--fast)':'var(--eco)';
+  badge.textContent=key.toUpperCase();
+  badge.style.background=key==='fast'?'var(--fast-dim)':'var(--eco-dim)';
+  badge.style.color=col;
+  badge.style.border=`1px solid ${col}`;
+  document.getElementById('route-label-sub').textContent=
+    key==='fast'
+      ?`${rd.route.duration_min} min · ${rd.route.distance_km} km`
+      :`${rd.route.duration_min} min · ${rd.route.distance_km} km`;
+
+  document.getElementById('dpanel').classList.remove('visible');
+}
+
+function renderStats(rd, key){
+  const s=rd.summary;
+  const socPct=s.route_completed?s.final_soc_pct:0;
+  const socColor=socPct>40?'g':socPct>15?'w':'r';
+  const routeColor=key==='fast'?'b':'g';
+
+  document.getElementById('sg').innerHTML=`
+    <div class="sc ${key==='fast'?'fast-c':'eco-c'}">
+      <div class="sl">REACHABLE</div>
+      <div class="sv ${routeColor}">${s.reachable_km}<small style="font-size:11px"> km</small></div>
+      <div class="su">of ${rd.route.distance_km} km</div>
+    </div>
+    <div class="sc ${s.route_completed?'info':'danger'}">
+      <div class="sl">FINAL SOC</div>
+      <div class="sv ${socColor}">${s.route_completed?socPct.toFixed(1)+'%':'EMPTY'}</div>
+      <div class="su">${s.route_completed?'remaining':'exhausted'}</div>
+    </div>`;
+
+  document.getElementById('sg2').innerHTML=`
+    <div class="sc">
+      <div class="sl">CONSUMED</div>
+      <div class="sv r">${s.total_consumed_kwh}</div>
+      <div class="su">kWh</div>
+    </div>
+    <div class="sc hi">
+      <div class="sl">REGEN</div>
+      <div class="sv g">${s.total_regen_kwh}</div>
+      <div class="su">kWh</div>
+    </div>
+    <div class="sc">
+      <div class="sl">NET USE</div>
+      <div class="sv w">${s.net_energy_kwh}</div>
+      <div class="su">kWh</div>
+    </div>`;
+
+  const fillColor=socPct>40?'#00ffa0':socPct>15?'#ffb347':'#ff6b6b';
+  document.getElementById('socbar').innerHTML=`
+    <div class="socbar-label">
+      <span>BATTERY${s.route_completed?' (END OF ROUTE)':' (EXHAUSTED)'}</span>
+      <span style="color:${fillColor}">${s.route_completed?socPct.toFixed(1)+'%':'0%'}</span>
+    </div>
+    <div class="socbar-track">
+      <div class="socbar-fill" style="width:${s.route_completed?socPct:0}%;background:${fillColor}"></div>
+    </div>`;
+
+  const eb=document.getElementById('exbanner');
+  if(rd.exhaustion){
+    eb.classList.add('visible');
+    document.getElementById('exbody').innerHTML=
+      `Battery depleted after <b>${rd.exhaustion.range_km} km</b> — 
+       ${(rd.route.distance_km-rd.exhaustion.range_km).toFixed(1)} km short of destination.`;
+  } else {
+    eb.classList.remove('visible');
+  }
+}
+
+function renderChargingPanel(cs, exhaustion, key){
+  const panel=document.getElementById('chpanel');
+  if(!cs||!cs.stations){panel.style.display='none';return;}
+  panel.style.display='block';
+  document.getElementById('ch-title').textContent=
+    exhaustion?'NEAREST CHARGING STATIONS':'CHARGING STATIONS NEAR DEST';
+  document.getElementById('ch-sub').textContent=
+    `Within 10 km · ${key.toUpperCase()} route`;
+  const list=document.getElementById('stList');
+  if(!cs.stations.length){
+    list.innerHTML=`<div style="font-size:11px;color:var(--faint);text-align:center;padding:8px 0">No stations found within 10 km</div>`;
+    return;
+  }
+  list.innerHTML=cs.stations.map((st,i)=>`
+    <div class="station-item" id="sti-${i}" onclick="highlightStation(${i})">
+      <div class="st-r1">
+        <span class="st-name">${st.name||'EV Charging'}</span>
+        <span class="st-dist">${st.dist_km} km</span>
+      </div>
+      <div class="st-r2">
+        ${st.network?`<span class="st-meta">${st.network}</span>`:''}
+        ${st.sockets!=='?'?`<span class="st-badge">${st.sockets} ports</span>`:''}
+      </div>
+    </div>`).join('');
+}
+
+function highlightStation(i){
+  document.querySelectorAll('.station-item').forEach((el,j)=>
+    el.classList.toggle('highlighted',j===i));
+  document.getElementById(`sti-${i}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
+  const mArr=activeRoute==='fast'?markers.chFast:markers.chEco;
+  if(mArr[i]){map.setView(mArr[i].getLatLng(),14);mArr[i].openPopup();}
+}
+
+function renderWindowList(windows){
+  const maxE=Math.max(...windows.map(w=>Math.abs(w.energy_kwh)));
+  document.getElementById('wl').innerHTML=windows.map((w,i)=>{
+    const col=LCOLOR[w.regen_label];
+    const bp=maxE>0?Math.round(Math.abs(w.energy_kwh)/maxE*100):0;
+    const es=w.energy_kwh>0?'+':'';
+    return `<div class="wi${w.reachable?'':' unreachable'}" id="wi${i}" onclick="highlightWin(${i})">
+      <span class="wid">#${String(i+1).padStart(2,'0')}</span>
+      <div class="wbw"><div class="wb" style="width:${bp}%;background:${col}"></div></div>
+      <span class="wen" style="color:${col}">${es}${w.energy_kwh.toFixed(3)}</span>
+      <span class="wtag ${TCLS[w.regen_label]}">${TTXT[w.regen_label]}</span>
+    </div>`;
+  }).join('');
+}
+
+function highlightWin(i){
+  if(!data)return;
+  activeW=i;
+  layers[activeRoute].forEach((l,idx)=>{
+    const w=data[activeRoute].windows[idx]; if(!w)return;
+    const col=w.reachable?LCOLOR[w.regen_label]:'#444';
+    l.setStyle({weight:idx===i?9:4,opacity:idx===i?1:(w.reachable?.88:.3),color:col});
+  });
+  document.querySelectorAll('.wi').forEach((el,idx)=>el.classList.toggle('active',idx===i));
+  document.getElementById(`wi${i}`)?.scrollIntoView({behavior:'smooth',block:'nearest'});
+  const w=data[activeRoute].windows[i]; const f=w.features;
+  document.getElementById('dpt').textContent=
+    `${activeRoute.toUpperCase()} — WINDOW #${i+1} — ${TTXT[w.regen_label]}`;
+  document.getElementById('dpr').innerHTML=`
+    <div class="dp-row"><span class="dp-k">Energy</span>
+      <span class="dp-v" style="color:${LCOLOR[w.regen_label]}">${w.energy_kwh>0?'+':''}${w.energy_kwh.toFixed(4)} kWh</span></div>
+    <div class="dp-row"><span class="dp-k">Remaining</span>
+      <span class="dp-v">${w.remaining_kwh.toFixed(2)} kWh</span></div>
+    <div class="dp-row"><span class="dp-k">Speed</span>
+      <span class="dp-v">${(f.speed_mps*3.6).toFixed(1)} km/h <span class="dp-src">OSRM</span></span></div>
+    <div class="dp-row"><span class="dp-k">Gradient</span>
+      <span class="dp-v">${(f.gradient*100).toFixed(2)}% <span class="dp-src">Open-Elev</span></span></div>
+    <div class="dp-row"><span class="dp-k">Speed Limit</span>
+      <span class="dp-v">${f.speed_limit_kmh} km/h <span class="dp-src">Overpass</span></span></div>
+    <div class="dp-row"><span class="dp-k">Elevation</span>
+      <span class="dp-v">${f.elevation_m.toFixed(1)} m <span class="dp-src">Open-Elev</span></span></div>
+    <div class="dp-row"><span class="dp-k">Reachable</span>
+      <span class="dp-v" style="color:${w.reachable?'var(--eco)':'var(--danger)'}">${w.reachable?'YES':'NO'}</span></div>`;
+  document.getElementById('dpanel').classList.add('visible');
+}
+
+// ── CHARTS ────────────────────────────────────────────────
+function renderLineChart(id,profile,xk,yk,fill,line,unit){
+  const cv=document.getElementById(id); if(!cv||!profile||profile.length<2)return;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=cv.offsetWidth*dpr; cv.height=cv.offsetHeight*dpr;
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const W=cv.offsetWidth,H=cv.offsetHeight,P={t:6,r:6,b:18,l:36};
+  const cW=W-P.l-P.r,cH=H-P.t-P.b;
+  const vs=profile.map(p=>p[yk]),ds=profile.map(p=>p[xk]);
+  const mn=Math.min(...vs),mx=Math.max(...vs),rv=mx-mn||1,rd=ds[ds.length-1]-ds[0]||1;
+  const xO=d=>P.l+(d-ds[0])/rd*cW, yO=v=>P.t+cH-(v-mn)/rv*cH;
+  ctx.beginPath(); ctx.moveTo(xO(ds[0]),yO(vs[0]));
+  profile.forEach(p=>ctx.lineTo(xO(p[xk]),yO(p[yk])));
+  ctx.lineTo(xO(ds[ds.length-1]),P.t+cH); ctx.lineTo(xO(ds[0]),P.t+cH);
+  ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(xO(ds[0]),yO(vs[0]));
+  profile.forEach(p=>ctx.lineTo(xO(p[xk]),yO(p[yk])));
+  ctx.strokeStyle=line; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle='#3d6058'; ctx.font='9px Space Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText(Math.round(mx)+unit,P.l-3,P.t+7);
+  ctx.fillText(Math.round(mn)+unit,P.l-3,P.t+cH);
+  ctx.fillText(ds[ds.length-1].toFixed(1)+'km',W-P.r,P.t+cH+13);
+}
+
+function renderEnergyChart(windows){
+  const cv=document.getElementById('enc'); if(!cv||!windows.length)return;
+  const dpr=window.devicePixelRatio||1;
+  cv.width=cv.offsetWidth*dpr; cv.height=cv.offsetHeight*dpr;
+  const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr);
+  const W=cv.offsetWidth,H=cv.offsetHeight,P={t:6,r:6,b:18,l:42};
+  const cW=W-P.l-P.r,cH=H-P.t-P.b;
+  const vs=windows.map(w=>w.energy_kwh);
+  const mn=Math.min(...vs),mx=Math.max(...vs),rv=mx-mn||1;
+  const bw=Math.max(2,cW/windows.length-1);
+  const zy=P.t+cH-(0-mn)/rv*cH;
+  ctx.strokeStyle='rgba(255,255,255,.1)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(P.l,zy); ctx.lineTo(P.l+cW,zy); ctx.stroke();
+  windows.forEach((w,i)=>{
+    const x=P.l+i*(cW/windows.length);
+    const y=P.t+cH-(w.energy_kwh-mn)/rv*cH;
+    const h=Math.abs(zy-y)||1;
+    ctx.fillStyle=w.reachable?LCOLOR[w.regen_label]:'#444';
+    ctx.fillRect(x,Math.min(y,zy),bw,h);
+  });
+  ctx.fillStyle='#3d6058'; ctx.font='9px Space Mono,monospace';
+  ctx.textAlign='right';
+  ctx.fillText(mx.toFixed(3),P.l-3,P.t+7);
+  ctx.fillText(mn.toFixed(3),P.l-3,P.t+cH);
+  ctx.fillText('0',P.l-3,zy+3);
+  ctx.fillText(windows.length+' win',W-P.r,P.t+cH+13);
+}
+
+// ── CLEAR ─────────────────────────────────────────────────
+function clearAll(){
+  ['fast','eco'].forEach(k=>{
+    layers[k].forEach(l=>map.removeLayer(l)); layers[k]=[];
+  });
+  ['mA','mB','exFast','exEco'].forEach(k=>{
+    if(markers[k]){map.removeLayer(markers[k]);markers[k]=null;}
+  });
+  ['chFast','chEco'].forEach(k=>{
+    markers[k].forEach(m=>map.removeLayer(m)); markers[k]=[];
+  });
+  document.getElementById('dpanel').classList.remove('visible');
+  document.getElementById('leg').style.display='none';
+  document.getElementById('rtog').style.display='none';
+  document.getElementById('cmpbar').classList.remove('visible');
+  document.getElementById('exbanner').classList.remove('visible');
+  document.getElementById('chpanel').style.display='none';
+  activeW=-1;
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+document.getElementById('ori').addEventListener('keydown',e=>{if(e.key==='Enter')analyze();});
+document.getElementById('dst').addEventListener('keydown',e=>{if(e.key==='Enter')analyze();});
+</script>
+</body>
+</html>
