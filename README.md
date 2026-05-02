@@ -1,103 +1,60 @@
-# Electric Vehicle Energy Consumption Analysis
+# Road-Condition-Aware EV Range Prediction
 
-This project analyzes electric vehicle energy consumption patterns using LSTM neural networks and explores regenerative braking efficiency.
+This project implements a topography-aware electric vehicle (EV) range prediction and smart route optimization system using deep learning and live mapping APIs. It predicts real-world EV energy consumption by incorporating road elevation, speed profiles, and regenerative braking potential, enabling users to make smarter navigation decisions through Fast and Eco routing modes.
 
-## Features
+---
 
-- **Data Preprocessing**: Cleans and processes electric vehicle driving data
-- **LSTM Model**: Time-series prediction model for energy consumption
-- **Regenerative Analysis**: Studies regenerative braking efficiency vs road gradient
-- **Exploratory Data Analysis**: Comprehensive visualization of driving patterns
+## Project Overview
 
-## Project Structure
+Traditional EV range estimators often ignore terrain variation and regenerative braking opportunities, leading to inaccurate range predictions. This project addresses that challenge by integrating:
 
-```
-├── regen.ipynb              # Main analysis notebook
-├── energy_lstm_checkpoint.pt # Trained model checkpoint
-├── clean_eved/              # Processed clean data
-├── raw_eved/                # Raw vehicle data
-├── requirements.txt         # Python dependencies
-└── README.md               # This file
-```
+- **LSTM-based energy prediction**
+- **Road gradient and elevation awareness**
+- **Regenerative braking efficiency modeling**
+- **Real-time route analysis using live APIs**
+- **Interactive GUI for user navigation**
 
-## Setup
+The system helps users determine:
 
-1. **Clone the repository:**
-   ```bash
-   git clone <your-repo-url>
-   cd "ATET Project"
-   ```
+- Whether their EV can reach the selected destination
+- Which route is faster
+- Which route is more energy efficient
+- Estimated battery depletion or regeneration throughout the journey
 
-2. **Create and activate virtual environment:**
-   ```bash
-   python -m venv venv
-   # On Windows:
-   venv\Scripts\activate
-   # On macOS/Linux:
-   source venv/bin/activate
-   ```
+---
 
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Core Features
 
-4. **Run the notebook:**
-   ```bash
-   jupyter notebook regen.ipynb
-   ```
+### Topography-Aware Range Prediction
+- Dynamically evaluates:
+  - Elevation gain/loss
+  - Road slopes
+  - Gradient profiles
+  - Regenerative braking zones
+- Provides more realistic EV battery consumption estimates
 
-## Data Processing
+---
 
-The project processes electric vehicle data with the following steps:
+### Dual-Mode Routing System
 
-1. **Data Cleaning**: Removes invalid entries and handles missing values
-2. **Feature Engineering**: 
-   - Converts speed to m/s
-   - Calculates acceleration from speed differences
-   - Detects braking and stop events
-   - Processes road gradient information
+#### Fast Mode
+- Prioritizes minimum travel time
+- Uses standard OSRM shortest-time routing
+- Best for urgent travel scenarios
 
-3. **Time Series Preparation**: Creates sliding windows for LSTM training
+#### Eco Mode
+- Prioritizes maximum battery efficiency
+- Uses LSTM predictions combined with:
+  - Terrain analysis
+  - Regenerative braking potential
+  - Speed constraints
+- Extends practical EV driving range
 
-## Model Architecture
+---
 
-- **LSTM Network**: 2-layer LSTM with 64 hidden units
-- **Features**: Speed, acceleration, gradient, braking flags, speed limits
-- **Target**: Energy consumption prediction
-- **Window Size**: 20 time steps
-
-## Results
-
-- The model achieves competitive performance in predicting energy consumption
-- Analysis reveals correlation between road gradient and regenerative efficiency
-- Braking events show distinct energy patterns compared to cruising
-
-## Usage
-
-The main analysis is contained in `regen.ipynb`. Run all cells to:
-
-1. Process raw vehicle data
-2. Perform exploratory data analysis
-3. Train the LSTM model
-4. Analyze regenerative braking efficiency
-
-## Dependencies
-
-- Python 3.8+
-- PyTorch
-- Pandas, NumPy
-- Matplotlib, Seaborn
-- Scikit-learn
-- Jupyter
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## License
-
-This project is for educational and research purposes.
+### LSTM Time-Series Prediction Model
+- 3-layer stacked LSTM architecture
+- 256 hidden units
+- Fully connected prediction layers:
+```math
+256 \rightarrow 128 \rightarrow 64 \rightarrow 1
